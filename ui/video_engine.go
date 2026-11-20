@@ -37,9 +37,9 @@ const (
 // part of this one as a picture: on Windows the NT handle of a Direct3D 11
 // texture in BGRA with a keyed mutex, on macOS a CVPixelBufferRef, which
 // the window's renderer draws from there, without a copy through memory.
-func NewTexturePicture(native uintptr, w, h int) VideoPicture {
+func NewTexturePicture(native uintptr, id uint64, w, h int) VideoPicture {
 	return media.Picture{
-		Surface: &scene.Surface{Format: scene.SurfaceBGRA, Native: native},
+		Surface: &scene.Surface{Format: scene.SurfaceBGRA, Native: native, NativeID: id},
 		W:       w,
 		H:       h,
 	}
