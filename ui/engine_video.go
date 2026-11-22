@@ -172,6 +172,15 @@ func (v *videoEngine) advance(c *context, p *VideoPlayer) {
 		}
 		return
 	}
+	// What the last present took from its call to the screen taking it, told
+	// to an engine that leads its pictures by it: the compositor's part of
+	// the way is in no clock of the engine's, and mpv measures it too
+	// (video/out/vo.c: check_timed_frame_late off the presentation feedback).
+	if l, ok := rt.host.(interface{ presentLag() time.Duration }); ok {
+		if e, ok := v.e.(interface{ SetPresentLag(time.Duration) }); ok {
+			e.SetPresentLag(l.presentLag())
+		}
+	}
 	if pic, changed, ok := v.e.Frame(c.now); ok {
 		v.ready = true
 		if changed {

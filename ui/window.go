@@ -496,6 +496,17 @@ const frameIdle = 2 * time.Second
 
 func (h *windowHost) refreshRate() float32 { return float32(h.conn.Surface.RefreshRate()) }
 
+// presentLag is how long the last presented frame took from its Present call
+// to the screen taking it, off the GPU renderer's own statistics, 0 where
+// nothing measures it. A video engine takes it to lead its pictures by, for
+// what the compositor adds is not in any clock of the one presenting.
+func (h *windowHost) presentLag() time.Duration {
+	if l, ok := h.gpu.(interface{ PresentLag() time.Duration }); ok {
+		return l.PresentLag()
+	}
+	return 0
+}
+
 // occluded reports whether nothing of the window shows: never before its
 // first frame reached the surface, which a window made hidden waits for
 // to become ready to show (OnReadyToShow), though it shows nothing yet.

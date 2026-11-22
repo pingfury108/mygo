@@ -114,6 +114,7 @@ const (
 	factoryCreateSwapChainComp = 24 // CreateSwapChainForComposition
 	scPresent                  = 8
 	scPresent1                 = 22 // IDXGISwapChain1
+	scGetFrameStats            = 16 // IDXGISwapChain::GetFrameStatistics
 	scSetBackgroundColor       = 25 // IDXGISwapChain1
 	scGetBuffer                = 9
 	scResizeBuffers            = 13
@@ -1836,6 +1837,55 @@ const (
 // a pixel, follow each other as fast as the main thread draws them.
 func (r *Renderer) waitRefresh() {
 	r.awaitDisplay(minRefresh, maxRefresh)
+}
+
+// frameStats is DXGI_FRAME_STATISTICS as the system of Windows 8.1 and later
+// writes it; the headers mingw carries hold an older, shorter one.
+type frameStats struct {
+	PresentCount     uint32
+	PresentRefreshes uint32
+	SyncRefreshes    uint32
+	_                uint32
+	SyncQPC          int64
+	SyncGPU          int64
+	PresentQPC       int64
+	PresentTime      int64
+}
+
+// PresentLag is how long the last presented frame took from its Present call
+// to the screen taking it, measured off the swap chain's own frame statistics
+// — the whole of what a compositor and a swap chain add, which no clock inside
+// the one presenting can see. 0 where the statistics say nothing (a swap chain
+// the driver reports none for, or a system older than the extended fields).
+func (r *Renderer) PresentLag() time.Duration {
+	if r.swapChain == 0 {
+		return 0
+	}
+	var st frameStats
+	if failed(call(r.swapChain, scGetFrameStats, uintptr(unsafe.Pointer(&st)))) {
+		return 0
+	}
+	if st.SyncQPC == 0 || st.PresentQPC == 0 {
+		return 0 // the driver reports no statistics
+	}
+	// Refresh counts place the two on the vsync grid; the QPC times give the
+	// phase between them. What the screen took after Present called is whole
+	// refreshes between the two plus that phase, kept where a frame waits a
+	// sane number of them.
+	period := r.cost.refreshPeriod()
+	qpc := float64(st.SyncQPC-st.PresentQPC) / r.qpcNS()
+	lags := float64(int64(st.SyncRefreshes)-int64(st.PresentRefreshes)) + qpc/float64(period)
+	if lags < 0 || lags > 4 {
+		return 0 // a stall or a statistic of another frame: worth nothing
+	}
+	return time.Duration(lags * float64(period))
+}
+
+// qpcNS is how many nanoseconds a unit of the performance counter holds.
+func (r *Renderer) qpcNS() float64 {
+	var f int64
+	kernel32.NewProc("QueryPerformanceFrequency").Call(uintptr(unsafe.Pointer(&f)))
+	return 1e9 / float64(f)
 }
 
 // waitComposed has the frame following one presented with sync interval 0 wait
